@@ -84,23 +84,23 @@ class SchemaStore {
 		$result = "";
 		if ($baseParts['scheme']) {
 			$result .= $baseParts['scheme']."://";
-			if ($baseParts['user']) {
+			if (isset($baseParts['user'])) {
 				$result .= ":".$baseParts['user'];
-				if ($baseParts['pass']) {
+				if (isset($baseParts['pass'])) {
 					$result .= ":".$baseParts['pass'];
 				}
 				$result .= "@";
 			}
 			$result .= $baseParts['host'];
-			if ($baseParts['port']) {
+			if (isset($baseParts['port'])) {
 				$result .= ":".$baseParts['port'];
 			}
 		}
 		$result .= $baseParts["path"];
-		if ($baseParts['query']) {
+		if (isset($baseParts['query'])) {
 			$result .= "?".$baseParts['query'];
 		}
-		if ($baseParts['fragment']) {
+		if (isset($baseParts['fragment'])) {
 			$result .= "#".$baseParts['fragment'];
 		}
 		return $result;
@@ -153,7 +153,8 @@ class SchemaStore {
 					$fragment = urldecode(implode("#", $urlParts));
 					$this->refs[$baseUrl][$refUrl] =& $schema;
 				}
-			} else if (isset($schema->id)) {
+			} else if (isset($schema->id) && is_string($schema->id)) {
+				// BUG: property "id" of an object is handled as schema id -> Workaround with check whether it is an string
 				$schema->id = $url = self::resolveUrl($url, $schema->id);
 				if ($trustPrefix === TRUE
 						|| (substr($schema->id, 0, strlen($trustPrefix)) == $trustPrefix
@@ -173,7 +174,8 @@ class SchemaStore {
 			}
 		} else if (is_array($schema)) {
 			foreach ($schema as &$value) {
-				self::normaliseSchema($value);
+				// TODO: check if this is correct
+				self::normaliseSchema($url, $value, $trustPrefix);
 			}
 		}
 	}
