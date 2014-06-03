@@ -82,7 +82,7 @@ class SchemaStore {
 		}
 		
 		$result = "";
-		if ($baseParts['scheme']) {
+		if (isset($baseParts['scheme'])) {
 			$result .= $baseParts['scheme']."://";
 			if (isset($baseParts['user'])) {
 				$result .= ":".$baseParts['user'];
@@ -122,7 +122,7 @@ class SchemaStore {
 		$trustBase = $trustBase[0];
 
 		$this->schemas[$url] =& $schema;
-		$this->normaliseSchema($url, $schema, $trusted ? TRUE : $trustBase);
+		$this->normalizeSchema($url, $schema, $trusted ? TRUE : $trustBase);
 		if ($fragment == "") {
 			$this->schemas[$baseUrl] = $schema;
 		}
@@ -137,7 +137,7 @@ class SchemaStore {
 		}
 	}
 	
-	private function normaliseSchema($url, &$schema, $trustPrefix) {
+	private function normalizeSchema($url, &$schema, $trustPrefix = '') {
 		if (is_array($schema) && !self::isNumericArray($schema)) {
 			$schema = (object)$schema;
 		}
@@ -156,26 +156,19 @@ class SchemaStore {
 			} else if (isset($schema->id) && is_string($schema->id)) {
 				// BUG: property "id" of an object is handled as schema id -> Workaround with check whether it is an string
 				$schema->id = $url = self::resolveUrl($url, $schema->id);
-				if ($trustPrefix === TRUE
-						|| (substr($schema->id, 0, strlen($trustPrefix)) == $trustPrefix
-							&& ($trustPrefix[strlen($trustPrefix) - 1] == "/"
-								|| $schema->id[strlen($trustPrefix)] == "#"
-								|| $schema->id[strlen($trustPrefix)] == "?")
-						)) {
-					if (!isset($this->schemas[$schema->id])) {
-						$this->add($schema->id, $schema);
-					}
+				$regex = '/^'.preg_quote($trustPrefix, '/').'(?:[#\/?].*)?$/';
+				if (($trustPrefix === TRUE || preg_match($regex, $schema->id)) && !isset($this->schemas[$schema->id])) {
+					$this->add($schema->id, $schema);
 				}
 			}
 			foreach ($schema as $key => &$value) {
 				if ($key != "enum") {
-					self::normaliseSchema($url, $value, $trustPrefix);
+					self::normalizeSchema($url, $value, $trustPrefix);
 				}
 			}
 		} else if (is_array($schema)) {
 			foreach ($schema as &$value) {
-				// TODO: check if this is correct
-				self::normaliseSchema($url, $value, $trustPrefix);
+				self::normalizeSchema($url, $value, $trustPrefix);
 			}
 		}
 	}
