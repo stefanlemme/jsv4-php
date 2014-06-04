@@ -12,16 +12,8 @@ class SchemaStore {
 		foreach ($parts as $part) {
 			$part = str_replace("~1", "/", $part);
 			$part = str_replace("~0", "~", $part);
-			if (is_array($value) && is_numeric($part)) {
+			if (is_array($value) && isset($value[$part])) {
 				$value =& $value[$part];
-			} else if (is_object($value)) {
-				if (isset($value->$part)) {
-					$value =& $value->$part;
-				} else if ($strict) {
-					throw new Exception("Path does not exist: $path");
-				} else {
-					return NULL;
-				}
 			} else if ($strict) {
 				throw new Exception("Path does not exist: $path");
 			} else {
@@ -128,6 +120,7 @@ class SchemaStore {
 		}
 		if (isset($this->refs[$baseUrl])) {
 			foreach ($this->refs[$baseUrl] as $fullUrl => &$refSchema) {
+				// resolve references
 				$refSchema = $this->get($fullUrl);
 				unset($this->refs[$baseUrl][$fullUrl]);
 			}
@@ -138,12 +131,19 @@ class SchemaStore {
 	}
 	
 	private function normalizeSchema($url, &$schema, $trustPrefix = '') {
-		if (is_array($schema) && !self::isNumericArray($schema)) {
-			$schema = (object)$schema;
-		}
 		if (is_object($schema)) {
-			if (isset($schema->{'$ref'})) {
-				$refUrl = $schema->{'$ref'} = self::resolveUrl($url, $schema->{'$ref'});
+			// prefer assoc arrays as they can handle unusual property names
+			$schema = (array)$schema;
+		}
+		
+		if (!is_array($schema)) {
+			// no need for normalization
+			return;
+		}			
+		
+		if (!self::isNumericArray($schema)) {
+			if (isset($schema['$ref'])) {
+				$refUrl = $schema['$ref'] = self::resolveUrl($url, $schema['$ref']);
 				if ($refSchema = $this->get($refUrl)) {
 					$schema = $refSchema;
 					return;
@@ -153,12 +153,12 @@ class SchemaStore {
 					$fragment = urldecode(implode("#", $urlParts));
 					$this->refs[$baseUrl][$refUrl] =& $schema;
 				}
-			} else if (isset($schema->id) && is_string($schema->id)) {
+			} else if (isset($schema['id']) && is_string($schema['id'])) {
 				// BUG: property "id" of an object is handled as schema id -> Workaround with check whether it is an string
-				$schema->id = $url = self::resolveUrl($url, $schema->id);
+				$schema['id'] = $url = self::resolveUrl($url, $schema['id']);
 				$regex = '/^'.preg_quote($trustPrefix, '/').'(?:[#\/?].*)?$/';
-				if (($trustPrefix === TRUE || preg_match($regex, $schema->id)) && !isset($this->schemas[$schema->id])) {
-					$this->add($schema->id, $schema);
+				if (($trustPrefix === TRUE || preg_match($regex, $schema['id'])) && !isset($this->schemas[$schema['id']])) {
+					$this->add($schema['id'], $schema);
 				}
 			}
 			foreach ($schema as $key => &$value) {
@@ -166,7 +166,7 @@ class SchemaStore {
 					self::normalizeSchema($url, $value, $trustPrefix);
 				}
 			}
-		} else if (is_array($schema)) {
+		} else {
 			foreach ($schema as &$value) {
 				self::normalizeSchema($url, $value, $trustPrefix);
 			}
@@ -174,20 +174,30 @@ class SchemaStore {
 	}
 	
 	public function get($url) {
+		// base schema requested
 		if (isset($this->schemas[$url])) {
 			return $this->schemas[$url];
 		}
+		
 		$urlParts = explode("#", $url);
 		$baseUrl = array_shift($urlParts);
 		$fragment = urldecode(implode("#", $urlParts));
+		
+		// sub schema requested
 		if (isset($this->schemas[$baseUrl])) {
 			$schema = $this->schemas[$baseUrl];
 			if ($schema && $fragment == "" || $fragment[0] == "/") {
 				$schema = self::pointerGet($schema, $fragment);
-				$this->add($url, $schema);
+				// TODO: check whether this is sufficient
+				//       baseSchema is already normalized
+				$this->schemas[$url] =& $schema;
+				//$this->add($url, $schema);
 				return $schema;
 			}
 		}
+		
+		// non-available schema requested
+		return null;
 	}
 }
 
